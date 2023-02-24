@@ -1,4 +1,3 @@
-.libPaths("E://R")
 
 library(ggplot2)
 library(ggpubr)
@@ -13,101 +12,113 @@ library(DHARMa)
 
 library(ggsignif)
 library(ggthemes)
-library(RColorBrewer)
+
 library(grid)  
 library(gtable) 
 library(gridExtra)
 library(lattice)
 
-
-library(arsenal)
-library(MASS)
-
-
 library(lme4)
 library(mgcv)
 library(car)
 
-library(lmtest)
 
+library(tidyverse)
+library(funModeling)
+
+###################################
+#### 1 - Load data and prepare ####
+###################################
 
 ###Load main data set foss_final
-foss=read.csv(file.choose())
-###Load PRE/POST PE data set prepostPE
-#prepost=read.csv(file.choose())
-### Load BARRIER closure barrier_testing
-#barrier=read.csv(file.choose())
+foss <- read_csv("./data/foss_final.csv")
+foss
 
-
-###LABEL FACTORS
+###Add labels and set factors
 foss$month <- factor(foss$month, ordered=TRUE, labels = c("September", "October", "November", "December", "January", "February"))
 foss$year <- factor(foss$year, labels = c("2017/18", "2018/19", "2019/20"))
 foss$lightperiod <- factor(foss$lightperiod, labels = c("Day", "Night"))
 foss$photo <- factor(foss$photo, labels = c("Dawn","Day","Dusk","Night"))
 foss$lvl_stage <- factor(foss$lvl_stage, labels = c("Rising","Falling","Stable \n (reference)","Stable \n (elevated)"))
 
-#### First subset data by years
-
-
+####Prepare yearly data sets
 fossy1 <- foss%>%filter(year=="2017/18")
 fossy2 <- foss%>%filter(year=="2018/19")
 fossy3 <- foss%>%filter(year=="2019/20")
 
+#############################
+#####Tests for normality#####
+#############################
+#Data expected to be non-normal due to multi-modial temporal variability and seasonal/yearly elements.
+#Unlikely to achieve normality with transformation. Should not be considered here.
 
-#### Print table for whole data set
+shapiro.test(foss$total)
+qqnorm(foss$total, pch = 1, frame = FALSE)
+qqline(foss$total, col = "steelblue", lwd = 2)
+#fish count non-normally distributed
 
-table_full <- tableby(lightperiod ~ total, data = foss, numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_full, title = "Foss")
+shapiro.test(fossy1$total)
+qqnorm(fossy1$total, pch = 1, frame = FALSE)
+qqline(fossy1$total, col = "steelblue", lwd = 2)
+#fish count non-normally distributed
 
-#### print tables for each year
+shapiro.test(fossy2$total)
+qqnorm(fossy2$total, pch = 1, frame = FALSE)
+qqline(fossy2$total, col = "steelblue", lwd = 2)
+#fish count non-normally distributed
 
-table_y1 <- tableby(lightperiod ~ total, data = fossy1, numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_y1, title = "Foss")
-table_y2 <- tableby(lightperiod ~ total, data = fossy2, numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_y2, title = "Foss")
-table_y3 <- tableby(lightperiod ~ total, data = fossy3, numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_y3, title = "Foss")
+shapiro.test(fossy3$total)
+qqnorm(fossy3$total, pch = 1, frame = FALSE)
+qqline(fossy3$total, col = "steelblue", lwd = 2)
+#fish count non-normally distributed
 
-######## Print tables for each month
+#####################################################
+#### 2 - Data exploration and summary statistics ####
+#####################################################
 
-table_1 <- tableby(lightperiod ~ total, data = fossy1%>%filter(month=="November"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_1, title = "Foss")
-table_2 <- tableby(lightperiod ~ total, data = fossy1%>%filter(month=="December"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_2, title = "Foss")
-table_3 <- tableby(lightperiod ~ total, data = fossy1%>%filter(month=="January"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_3, title = "Foss")
-table_4 <- tableby(lightperiod ~ total + lvl + temp, data = fossy1%>%filter(month=="February"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_4, title = "Foss")
-table_5 <- tableby(lightperiod ~ total + lvl + temp, data = fossy2%>%filter(month=="September"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_5, title = "Foss")
-table_6 <- tableby(lightperiod ~ total + lvl + temp, data = fossy2%>%filter(month=="October"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_6, title = "Foss")
-table_7 <- tableby(lightperiod ~ total + lvl + temp, data = fossy2%>%filter(month=="November"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_7, title = "Foss")
-table_8 <- tableby(lightperiod ~ total + lvl + temp, data = fossy2%>%filter(month=="December"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_8, title = "Foss")
-table_9 <- tableby(lightperiod ~ total + lvl + temp, data = fossy2%>%filter(month=="January"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_9, title = "Foss")
-table_10 <- tableby(lightperiod ~ total +  + temp, data = fossy2%>%filter(month=="February"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_10, title = "Foss")
-table_11 <- tableby(lightperiod ~ total + lvl + temp, data = fossy3%>%filter(month=="September"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_11, title = "Foss")
-table_12 <- tableby(lightperiod ~ total + lvl + temp, data = fossy3%>%filter(month=="October"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_12, title = "Foss")
-table_13 <- tableby(lightperiod ~ total + lvl + temp, data = fossy3%>%filter(month=="November"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_13, title = "Foss")
-table_14 <- tableby(lightperiod ~ total + lvl + temp, data = fossy3%>%filter(month=="December"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_14, title = "Foss")
-table_15 <- tableby(lightperiod ~ total + lvl + temp, data = fossy3%>%filter(month=="January"), numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_15, title = "Foss")
+glimpse(foss)
+status(foss)
 
-table_crep <- tableby(photo ~ total, data = foss, numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_crep, title = "CREP")
+#total fish count by year
+foss  %>%  group_by(year) %>%  summarise(n = sum(total))
+ggplot(foss, aes(year,total))+
+  geom_bar(stat="identity")+
+  geom_text(aes(label=after_stat(y)),stat = 'summary', fun = sum)
+#total fish count by year, light period
+foss  %>%  group_by(year,lightperiod) %>%  summarise(n = sum(total), med = median(total), min = min(total), max = max(total), IQR = IQR(total))
+ggplot(foss, aes(lightperiod,total))+
+  geom_boxplot()
+#total fish count by year, photoperiod
+foss  %>%  group_by(year,photo) %>%  summarise(n = sum(total))
+ggplot(foss, aes(photo,total))+
+  geom_boxplot()
+ggplot(foss, aes(photo,total))+
+  geom_boxplot()+facet_wrap(~year)
+#total fish count by hour
+foss  %>%  group_by(time2) %>%  summarise(n = sum(total))
+ggplot(foss, aes(as.factor(time),total))+
+  geom_boxplot()
+#total fish count by month
+foss  %>%  group_by(year,month) %>%  summarise(n = sum(total), med = median(total), min = min(total), max = max(total), IQR = IQR(total))
+ggplot(foss, aes(month,total))+
+  geom_bar(stat="identity")+
+  geom_text(aes(label=after_stat(y)),stat = 'summary', fun = sum)+facet_wrap(~year)
+#total fish count by month, light period
+foss  %>%  group_by(year,month, lightperiod) %>% summarise(n = sum(total), med = median(total), min = min(total), max = max(total), IQR = IQR(total))
+#total fish count by month, river level grouped
+foss  %>%  group_by(year,month, lvl_stage) %>% summarise(n = sum(total), med = median(total), min = min(total), max = max(total), IQR = IQR(total))
+ggplot(foss, aes(as.factor(lvl_stage),total))+
+  geom_boxplot()+facet_wrap(~year)
+#River level within observed data range - descriptive values presented in Table S1 represent full duration of study
+foss  %>%  group_by(year,month) %>%  summarise(med = median(lvl), min = min(lvl), max = max(lvl), IQR = IQR(lvl))
+ggplot(foss, aes(month,lvl))+
+  geom_boxplot()+facet_wrap(~year)
+#temperature within observed data range - descriptive values presented in Table S1 represent full duration of study
+foss %>% filter(year!="2017/18")%>% group_by(year,month) %>%  summarise(med = median(temp), min = min(temp), max = max(temp), IQR = IQR(temp))
+ggplot(foss%>%filter(year!="2017/18"), aes(month,temp))+
+  geom_boxplot()+facet_wrap(~year)
 
 
-#########
-###Reporting summary stats below
-#########
 
 ########################## Fish count differences between years #################################
 
