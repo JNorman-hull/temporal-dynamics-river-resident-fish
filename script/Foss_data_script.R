@@ -4,7 +4,6 @@ library(ggpubr)
 library(rstatix)
 library(dunn.test)
 library(cowplot)
-library(dplyr)
 library(glmmTMB)
 library(ggeffects)
 library(DHARMa)
@@ -40,6 +39,10 @@ foss$year <- factor(foss$year, labels = c("2017/18", "2018/19", "2019/20"))
 foss$lightperiod <- factor(foss$lightperiod, labels = c("Day", "Night"))
 foss$photo <- factor(foss$photo, labels = c("Dawn","Day","Dusk","Night"))
 foss$lvl_stage <- factor(foss$lvl_stage, labels = c("Rising","Falling","Stable \n (reference)","Stable \n (elevated)"))
+foss$p_event <- factor(foss$p_event, labels = c("Operation \n one", "Operation \n two"))
+foss$p_day <- factor(foss$p_day, labels = c("24h Pre-PO", "24h Post-PO"))
+foss$barrier <- factor(foss$barrier, labels =c("Normal operation", "Pre-dawn barrier closure", "Post barrier trial", "Operational level"))
+foss$barrier2 <- factor(foss$barrier2, labels =c("Normal operation", "Pre-dawn barrier closure", "Post barrier trial"))
 
 ####Prepare yearly data sets
 fossy1 <- foss%>%filter(year=="2017/18")
@@ -79,6 +82,8 @@ qqline(fossy3$total, col = "steelblue", lwd = 2)
 glimpse(foss)
 status(foss)
 
+#######Temporal fish count data#######
+
 #total fish count by year
 foss  %>%  group_by(year) %>%  summarise(n = sum(total))
 ggplot(foss, aes(year,total))+
@@ -109,6 +114,20 @@ foss  %>%  group_by(year,month, lightperiod) %>% summarise(n = sum(total), med =
 foss  %>%  group_by(year,month, lvl_stage) %>% summarise(n = sum(total), med = median(total), min = min(total), max = max(total), IQR = IQR(total))
 ggplot(foss, aes(as.factor(lvl_stage),total))+
   geom_boxplot()+facet_wrap(~year)
+
+
+#######Post pump operation fish count data#######
+
+#total fish count by day (pre, post operation)
+foss  %>% filter(!is.na(p_day))%>% group_by(p_event,p_day) %>%  summarise(n = sum(p_total), med = median(p_total), min = min(p_total), max = max(p_total), IQR = IQR(p_total))
+ggplot(foss%>%filter(!is.na(p_day)), aes(p_day,p_total))+
+  geom_bar(stat="identity")+
+  geom_text(aes(label=after_stat(y)),stat = 'summary', fun = sum)+facet_wrap(~p_event)
+
+#######Floodgate operation fish count data#######
+
+
+#######Environmental data#######
 #River level within observed data range - descriptive values presented in Table S1 represent full duration of study
 foss  %>%  group_by(year,month) %>%  summarise(med = median(lvl), min = min(lvl), max = max(lvl), IQR = IQR(lvl))
 ggplot(foss, aes(month,lvl))+
@@ -119,82 +138,50 @@ ggplot(foss%>%filter(year!="2017/18"), aes(month,temp))+
   geom_boxplot()+facet_wrap(~year)
 
 
-
-########################## Fish count differences between years #################################
-
-aov1 <- aov(foss$total~foss$year)
-summary(aov1)
-
-### FIT MODEL TO TEST FOR NORMALITY OF RESIDUALS
-
-fit1 <- lm(foss$total ~ foss$year)
-hist(residuals(fit1))
-
-qqnorm(residuals(fit1))
-qqline(residuals(fit1))
-shapiro.test(residuals(fit1))
+##################################
+#### 2 - Statistical analysis ####
+##################################
 
 ### Data is heavily skewed and non-normal, supported by shapiro.test
-### Use kruskal-wallis as non-parametric alternative
+### Use non-parametric testing throughout
 
+#######Temporal fish count data#######
+
+#Fish count differences between years
 kruskal.test(foss$total~foss$year)
-
-### Post-hoc dunn's test
-
-dunn.test(x=foss$total, g=foss$year, method="bh")
-
-#####################################################################
-
-########################## Fish count differences between months#################################
+#Fish count differences between months
 kruskal.test(foss$total~foss$month)
+#Post-hoc dunn's test
 dunn.test(x=foss$total, g=foss$month, method="bh")
-
-kruskal.test(fossy1$total~fossy1$month)
-kruskal.test(fossy2$total~fossy2$month)
-kruskal.test(fossy3$total~fossy3$month)
-
-dunn.test(x=foss%>%filter(month=="November")$total, g=foss$year, method="bh")
-dunn.test(x=foss%>%filter(month=="December")$total, g=foss$year, method="bh")
-dunn.test(x=foss%>%filter(month=="January")$total, g=foss$year, method="bh")
-
-######################### Fish count differences between light period ##############################
-
-###Full data set
+#Fish count differences between day and night
 wilcox.test(foss$total~foss$lightperiod)
-
-###Individual years
-
-wilcox.test(fossy1$total~fossy1$lightperiod)
-wilcox.test(fossy2$total~fossy2$lightperiod)
-wilcox.test(fossy3$total~fossy3$lightperiod)
-
-###Full data set, differences between months
-
-kruskal.test(foss$total~foss$monthdn)
-
-###Individual years
-
-kruskal.test(fossy1$total~fossy1$monthdn)
-dunn.test(x=fossy1$total, g=fossy1$monthdn, method="bh")
-
-kruskal.test(fossy2$total~fossy2$monthdn)
-dunn.test(x=fossy2$total, g=fossy2$monthdn, method="bh")
-
-kruskal.test(fossy3$total~fossy3$monthdn)
-dunn.test(x=fossy3$total, g=fossy3$monthdn, method="bh")
-
-
-#####Full data set
-
+#Fish count differences between photoperiods
 kruskal.test(foss$total~foss$photo)
+#Post-hoc dunn's test
 dunn.test(x=foss$total, g=foss$photo, method="bh")
 
-### Basic correlation test to see if daytime fish count follows daylight hours
+#######Post pump operation fish count data#######
 
-###Load data set based on daily sums, and averages of envronemntal factors
-fossavg=read.csv(file.choose())
+#Fish count pre and post pump operation
+wilcox.test(foss$p_total~foss$p_day)
+#Individual operations
+foss %>% filter(p_event=="Operation \n one") %>%
+  wilcox.test(data=.,p_total~p_day)
+foss %>% filter(p_event=="Operation \n two") %>%
+  wilcox.test(data=.,p_total~p_day)
 
-cor.test(fossavg$daytotal, fossavg$daylength, method="spearman")
+#######Floodgate operation fish count data#######
+
+#Trial comp post
+foss %>% filter(barrier2=="Post barrier trial"|barrier2=="Pre-dawn barrier closure") %>%
+  wilcox.test(data=.,b_total2~barrier2)
+#Trial comp hydro
+foss %>% filter(barrier2=="Normal operation"|barrier2=="Pre-dawn barrier closure") %>%
+  wilcox.test(data=.,b_total2~barrier2)
+#Post comp hydro
+foss %>%  filter(barrier2=="Normal operation"|barrier2=="Post barrier trial") %>%
+  wilcox.test(data=.,b_total2~barrier2)
+
 
 ###########################################################
 ### Drawing figures
@@ -336,24 +323,6 @@ ggsave(filename="finalbox.svg", plot=finalbox, device = "svg",units="cm", width=
 
 ############## PRE POST PUMP OPERATION
 
-#####Label EVENT and DAY as factors (nominal data)
-foss$p_event <- factor(foss$p_event, labels = c("Operation \n one", "Operation \n two"))
-foss$p_day <- factor(foss$p_day, labels = c("24h Pre-PO", "24h Post-PO"))
-
-#####Create table for summary stats 
-
-table_prepost <- tableby(p_day ~ p_total, data = foss, numeric.stats=c("median","min","max", "q1q3", "sum"))
-summary(table_prepost, title = "Prepost")
-
-#####Statistical print
-
-wilcox.test(foss$p_total~foss$p_day)
-
-foss %>% filter(p_event=="Operation \n one") %>%
-  wilcox.test(data=.,p_total~p_day)
-foss %>% filter(p_event=="Operation \n two") %>%
-  wilcox.test(data=.,p_total~p_day)
-
 
 ###Create summary statistics table
 stat.pp <- foss %>%
@@ -425,18 +394,7 @@ pp_bind <-plot_grid(barpp, pp_lvl,
 
 ################ BARRIER DATA SET
 
-foss$barrier <- factor(foss$barrier, labels =c("Normal operation", "Pre-dawn barrier closure", "Post barrier trial", "Operational level"))
-foss$barrier2 <- factor(foss$barrier2, labels =c("Normal operation", "Pre-dawn barrier closure", "Post barrier trial"))
 
-#Trial comp post
-foss %>% filter(barrier2=="Post barrier trial"|barrier2=="Pre-dawn barrier closure") %>%
-  wilcox.test(data=.,b_total2~barrier2)
-#Trial comp hydro
-foss %>% filter(barrier2=="Normal operation"|barrier2=="Pre-dawn barrier closure") %>%
-  wilcox.test(data=.,b_total2~barrier2)
-#Post comp hydro
-foss %>%  filter(barrier2=="Normal operation"|barrier2=="Post barrier trial") %>%
-  wilcox.test(data=.,b_total2~barrier2)
 
 #######summarise data, create ID for each row for continuous axis 
 
