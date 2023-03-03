@@ -1,29 +1,18 @@
-
-
-library(ggpubr)
-
-
-
-
-library(ggsignif)
-library(ggthemes)
-
-library(grid)  
-library(gtable) 
-library(gridExtra)
-library(lattice)
+#R RStudio 2022.07.2 Build 576
+#R 4.1.2
 
 library(tidyverse)
 library(funModeling)
 library(ggplot2)
+library(ggpubr)
 library(dunn.test)
-
 library(mgcv)
 library(car)
 library(MASS)
 library(glmmTMB)
 library(DHARMa)
 library(rstatix)
+library(gridExtra)
 library(cowplot)
 library(ggeffects)
 
@@ -507,7 +496,6 @@ testZeroInflation(simuout6) # 0.97 zero inflation treated
 #### 4 - Visualization and publication figures####
 ##################################################
 
-
 #create colour vector
 
 colours <- c("steelblue4", "red4", "palegreen4")
@@ -527,12 +515,39 @@ theme_JN <- function(base_size=10){
     ) 
 }
 
+################################
+#####Manuscript - Figure 2######
+################################
 
-##############################################
-#############################################
+fosstotal <- ggplot(transform(foss, year = factor(year,labels = c("Year one", "Year two", "Year three"))),
+                    aes(x = time, y = total)) +
+  geom_rect(aes(xmin=dplyr::lag(time)+1,xmax=(time)+1, ymin=-Inf,ymax=Inf,fill=photo))+
+  geom_rect(data=data.frame(year='Year three', month='February'), inherit.aes=F, 
+            xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = 'white')+
+  geom_rect(data=data.frame(year='Year one', month=c('September','October')), inherit.aes=F, 
+            xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = 'white')+
+  scale_fill_manual(values=c('grey90','grey90', 'white', 'grey80')) +
+  geom_jitter(size = 0.6, alpha=0.2)+
+  geom_smooth(method="gam", colour="black")+
+  labs(x = "Time of day (24h)", y = expression(Fish~count~("individuals·2m" ^2~h^-1)))+
+  coord_cartesian(xlim = c(1,23))+
+  scale_y_continuous(breaks = seq(0, 16, 4), limits=c(0, 16)) +
+  scale_x_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23),
+                     labels=c("","01:00","","","","05:00","","","","09:00","","","", "13:00","", "","", "17:00", "", "", "", "21:00", "",""),
+                     limits=c(-1,24),
+                     expand=c(0,0))+
+  theme_JN()+
+  theme(axis.text.x=element_text(angle=90, vjust=0.5)) + 
+  rremove("legend")+
+  facet_grid(factor(month, levels=c('September','October','November','December','January','February'))
+             ~(factor(year, levels=c('Year one','Year two','Year three'))))
+fosstotal
 
+ggsave(filename="fosstotal.svg", plot=fosstotal, device = "svg",units="cm", width=14,height=20, dpi=600)
 
-#####Create theme, update all figures
+################################
+#####Manuscript - Figure 3######
+################################
 
 ###Create summary statistics table
 stat.test1 <- foss %>%
@@ -573,34 +588,6 @@ box_lvl_stage <-  ggboxplot(
 
 box_lvl_stage
 
-##Fixed problem with ggplot code when trying to add stat_pvalue_manual(stat.test1)
-##Create ggplot as own argument ggplot(foss, aes(x=lvl_stage, y=total)) then add 
-##geom_boxplot as a function and remap the fill to lightperiod
-##If the fill is defined as a global aesthetic, stat_pvalue will look for column 'light period' in the stat.test1 df too
-
-box_lvl_stage <-  ggplot(foss, aes(x=lvl_stage, y=total))+
-  geom_boxplot(position = position_dodge(1), outlier.shape=NA,width=0.6,mapping=aes(fill=lightperiod))+
-  scale_y_continuous(breaks = seq(0, 20, 4),limits=c(0, 26)) +
-  labs(x = "D/S river level (Yorkshire Ouse) (mAOD)")+
-  coord_cartesian(clip="off")+
-  theme_JN()+
-  theme(axis.title.y = element_blank(),
-        legend.position = c(.07, 0.6),
-        legend.title = element_blank(),
-        legend.key.height = unit(0.3,"cm"),
-        legend.key.width = unit(0.4, "cm"),
-        legend.text = element_text(size=8),
-        legend.background = element_rect(colour = 'black', fill = 'white'),
-        strip.background = element_blank(),
-        strip.text = element_blank(),
-        panel.spacing.x=unit(0, "lines")) +
-  scale_fill_brewer(palette = "Greys")+
-  facet_wrap(~year, scales = "free_x")+
-  stat_pvalue_manual(stat.test1) +
-  ggpubr::rotate_x_text()
-box_lvl_stage
-
-
 #reorder factors for plot
 foss$photo <- factor(foss$photo , levels=c("Dawn", "Dusk", "Day", "Night"))
 
@@ -617,21 +604,6 @@ stat.test2 <- stat.test2 %>% add_xy_position(x = "photo")
 stat.test2 <-stat.test2[-c(2,4,5,8,10,11,14,16,17),]
 #adjusting y position manually
 stat.test2["y.position"] <- c(22,24,22,22,24,22,22,24,22)
-
-
-
-# box_photo <-  ggplot(foss, aes(x=photo, y=total))+
-#   geom_boxplot(position = position_dodge(1), outlier.shape=NA,width=0.6)+
-#   scale_y_continuous(breaks = seq(0, 20, 4),limits=c(0, 26)) +
-#   labs(x = "Photoperiod")+
-#   coord_cartesian(clip="off")+
-#   theme_JN()+
-#   theme(axis.title.y = element_blank(),
-#         panel.spacing.x=unit(0, "lines"))+
-#   facet_wrap(~year)+
-#   stat_pvalue_manual(stat.test2)
-# box_photo
-
 
 
 box_photo<- ggboxplot(
@@ -656,14 +628,93 @@ combined_bind
 finalbox <- annotate_figure(combined_bind, 
                             left=text_grob(expression (Fish~count~("individuals·2m" ^2~h^-1)),
                                            rot=90, hjust=0.4))
-
 finalbox
 
 ggsave(filename="finalbox.svg", plot=finalbox, device = "svg",units="cm", width=16,height=14, dpi=600)
 
 
-############## PRE POST PUMP OPERATION
+################################
+#####Manuscript - Figure 4######
+################################
 
+
+#Get predicted model fit line using ggpredict and store as dataframe
+plot(ggpredict(mod4_y1_zi, terms = c("lvl[5.2:7.2, by=0.01]")))
+plot(ggpredict(mod4_y2_zi, terms = c("lvl[5.2:7.2, by=0.01]")))
+plot(ggpredict(mod4_y3_zi, terms = c("lvl[5.2:7.2, by=0.01]")))
+plot(ggpredict(mod4_y2_zi, terms = c("temp[5:15, by=0.1]")))
+plot(ggpredict(mod4_y3_zi, terms = c("temp[5:15, by=0.1]")))
+
+modlvly1 <-ggpredict(mod4_y1_zi, terms = c("lvl[5.2:7.2, by=0.01]"))
+#Convert column group from factor to numeric for row binding
+#as.character first required to convert factor to character, and then to numeric
+modlvly1$group = as.numeric(as.character(modlvly1$group))
+modlvly2 <-ggpredict(mod4_y2_zi, terms = c("lvl[5.2:7.2, by=0.01]"))
+#Rename group column to 2
+modlvly2["group"] <- 2
+modlvly3 <-ggpredict(mod4_y3_zi, terms = c("lvl[5.2:7.2, by=0.01]"))
+#rename group column to 3
+modlvly3["group"] <- 3
+#bind data frames
+foss_lvl_mod <- bind_rows(modlvly1, modlvly2, modlvly3)
+
+modpredy2 <- ggpredict(mod4_y2_zi, terms = c("temp[5:15, by=0.1]"))
+modpredy2["group"] <- 2
+modpredy2$group = as.numeric(as.character(modpredy2$group))
+modpredy3 <- ggpredict(mod4_y3_zi,terms = "temp[5:15, by=0.1]")
+modpredy3["group"] <- 3
+foss_temp_mod <- bind_rows(modpredy2, modpredy3)
+
+foss_temp_mod<- foss_temp_mod %>% add_row(group = 1)
+
+tempregress <-ggplot(foss_temp_mod, aes(x=x, y=predicted, color=as.factor(group),fill=as.factor(group)))+
+  geom_line(lwd=1)+
+  geom_ribbon(aes(x=x,ymin=conf.low, ymax=conf.high),alpha=0.3, colour="black",linetype=0)+
+  scale_fill_manual(values=colours)+
+  scale_colour_manual(values=colours)+
+  scale_y_continuous(breaks = seq(0, 16, 2) ,limits=c(0,16), expand=c(0,0)) +
+  scale_x_continuous(breaks = seq(5,14,1), limits=c(5,14), expand=c(0,0)) +
+  coord_cartesian(clip = "off") +
+  labs(x = "River temperature \n (Yorkshire Ouse) (°C)")+
+  theme_JN()+
+  theme(axis.title.y = element_blank(),
+        legend.position = "none",
+        plot.margin = margin(5.5,10,5.5,5.5, "pt"))
+tempregress
+
+lvlregress <-ggplot(foss_lvl_mod, aes(x=x, y=predicted, color=as.factor(group),fill=as.factor(group)))+
+  geom_line(lwd=1)+
+  geom_ribbon(aes(x=x,ymin=conf.low, ymax=conf.high),alpha=0.3, colour="black",linetype=0)+
+  scale_fill_manual(values=colours)+
+  scale_colour_manual(values=colours)+
+  scale_y_continuous(breaks = seq(0, 16, 2) ,limits=c(0,16), expand=c(0,0)) +
+  scale_x_continuous(breaks = seq(5.2,7.2,0.4), limits=c(5.2,7.2), expand=c(0,0)) +
+  coord_cartesian(clip = "off") +
+  labs(x = "D/S river level \n (Yorkshire Ouse) (mAOD)",
+       y = expression (Fish~count~("individuals·2m" ^2~h^-1)))+
+  theme_JN()+
+  theme(legend.position = "none",
+        plot.margin = margin(5.5,10,5.5,5.5, "pt"))
+lvlregress
+
+##
+#combinedregress<- ggdraw() +
+#  draw_plot(lvlregress, x = 0, y = 0, width = 0.53, height = 1) +
+#  draw_plot(tempregress, x =0.53, y=0, width=0.47, height=1)+
+#  draw_plot_label(label = c("a)", "b)", "CI = 95%", "CI = 95%"), 
+#                  size = 10,
+#                  x = c(0.10, 0.58,0.35, 0.8), 
+#                  y = c(0.97, 0.97,0.97, 0.97))
+
+
+combinedregress <-plot_grid(lvlregress, tempregress,
+                            ncol = 2, nrow = 1, rel_widths = c(0.43,0.4), align = "h") 
+combinedregress
+ggsave(filename="combinedregress.svg", plot=combinedregress, device = "svg",units="cm", width=14,height=7, dpi=600)
+
+################################
+#####Manuscript - Figure 5######
+################################
 
 ###Create summary statistics table
 stat.pp <- foss %>%
@@ -733,11 +784,12 @@ pp_lvl
 pp_bind <-plot_grid(barpp, pp_lvl,
                     ncol = 2, nrow = 1, rel_widths = c(3.5, 6.5),align = "h")
 
-################ BARRIER DATA SET
+################################
+#####Manuscript - Figure 6######
+################################
 
 
-
-#######summarise data, create ID for each row for continuous axis 
+###summarise data, create ID for each row for continuous axis 
 
 hist_sum <- foss %>% filter(barrier2=="Pre-dawn barrier closure")%>%
   group_by(b_time) %>% 
@@ -882,17 +934,6 @@ top_bind<- ggdraw() +
   draw_plot(topbox1, x = 0, y = 0, width = 0.3, height = 1) +
   draw_plot(topbox2, x =0.3, y=0, width=0.7, height=1)
 top_bind
-
-####going to replace the repeated calls to gg_draw with one nested cowplot example;
-
-#plot_grid(plot_grid(pq1_plop, pq2_plop, pq3_plop, 
-#                    ncol = 1, rel_heights = c(5, 9, 13), align = "v"), 
-#         plot_grid(pq1_status, pq2_status, pq3_status, 
-#                    ncol = 1, rel_heights = c(5, 9, 13)),
-#          nrow = 1, rel_widths = c(10, 1))
-
-#####middle plot
-
 
 histbox2 <- ggplot(hist_sum_bind%>%filter(barrier=="Post barrier trial"), aes(x=x_ID, y = med)) +
   geom_bar(stat="identity", width=1, alpha=0.2) +
@@ -1106,11 +1147,6 @@ bottom_bind<- ggdraw() +
   draw_plot(bottombox2, x =0.3, y=0, width=0.7, height=1)
 bottom_bind
 
-
-top_bind
-middle_bind
-bottom_bind
-
 combinedbarrier <-ggarrange(top_bind, bottom_bind, ncol=1, nrow=2)
 combinedbarrier
 
@@ -1132,125 +1168,3 @@ finalbarrier2 <- finalbarrier + draw_plot_label(label = c("a)", "b)", "c)", "d)"
 finalbarrier2
 
 ggsave(filename="finalbarrier.svg", plot=finalbarrier, device = "svg",units="cm", width=16,height=12, dpi=600)
-
-###############################
-
-
-
-
-fosstotal <- ggplot(transform(foss, year = factor(year,labels = c("Year one", "Year two", "Year three"))),
-                    aes(x = time, y = total)) +
-  geom_rect(aes(xmin=dplyr::lag(time)+1,xmax=(time)+1, ymin=-Inf,ymax=Inf,fill=photo))+
-  geom_rect(data=data.frame(year='Year three', month='February'), inherit.aes=F, 
-            xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = 'white')+
-  geom_rect(data=data.frame(year='Year one', month=c('September','October')), inherit.aes=F, 
-            xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, fill = 'white')+
-  scale_fill_manual(values=c('grey90','grey90', 'white', 'grey80')) +
-  geom_jitter(size = 0.6, alpha=0.2)+
-  geom_smooth(method="gam", colour="black")+
-  labs(x = "Time of day (24h)", y = expression(Fish~count~("individuals·2m" ^2~h^-1)))+
-  coord_cartesian(xlim = c(1,23))+
-  scale_y_continuous(breaks = seq(0, 16, 4), limits=c(0, 16)) +
-  scale_x_continuous(breaks=c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23),
-                     labels=c("","01:00","","","","05:00","","","","09:00","","","", "13:00","", "","", "17:00", "", "", "", "21:00", "",""),
-                     limits=c(-1,24),
-                     expand=c(0,0))+
-  theme_JN()+
-  theme(axis.text.x=element_text(angle=90, vjust=0.5)) + 
-  rremove("legend")+
-  facet_grid(factor(month, levels=c('September','October','November','December','January','February'))
-             ~(factor(year, levels=c('Year one','Year two','Year three'))))
-fosstotal
-
-ggsave(filename="fosstotal.svg", plot=fosstotal, device = "svg",units="cm", width=14,height=20, dpi=600)
-
-
-
-
-
-#############################################
-##### GLM figure
-#############################################
-
-###############################
-
-#Get predicted model fit line using ggpredict and store as dataframe
-plot(ggpredict(mod4_y1_zi, terms = c("lvl[5.2:7.2, by=0.01]")))
-plot(ggpredict(mod4_y2_zi, terms = c("lvl[5.2:7.2, by=0.01]")))
-plot(ggpredict(mod4_y3_zi, terms = c("lvl[5.2:7.2, by=0.01]")))
-plot(ggpredict(mod4_y2_zi, terms = c("temp[5:15, by=0.1]")))
-plot(ggpredict(mod4_y3_zi, terms = c("temp[5:15, by=0.1]")))
-
-modlvly1 <-ggpredict(mod4_y1_zi, terms = c("lvl[5.2:7.2, by=0.01]"))
-#Convert column group from factor to numeric for row binding
-#as.character first required to convert factor to character, and then to numeric
-modlvly1$group = as.numeric(as.character(modlvly1$group))
-modlvly2 <-ggpredict(mod4_y2_zi, terms = c("lvl[5.2:7.2, by=0.01]"))
-#Rename group column to 2
-modlvly2["group"] <- 2
-modlvly3 <-ggpredict(mod4_y3_zi, terms = c("lvl[5.2:7.2, by=0.01]"))
-#rename group column to 3
-modlvly3["group"] <- 3
-#bind data frames
-foss_lvl_mod <- bind_rows(modlvly1, modlvly2, modlvly3)
-
-modpredy2 <- ggpredict(mod4_y2_zi, terms = c("temp[5:15, by=0.1]"))
-modpredy2["group"] <- 2
-modpredy2$group = as.numeric(as.character(modpredy2$group))
-modpredy3 <- ggpredict(mod4_y3_zi,terms = "temp[5:15, by=0.1]")
-modpredy3["group"] <- 3
-foss_temp_mod <- bind_rows(modpredy2, modpredy3)
-
-foss_temp_mod<- foss_temp_mod %>% add_row(group = 1)
-
-##################################################
-tempregress <-ggplot(foss_temp_mod, aes(x=x, y=predicted, color=as.factor(group),fill=as.factor(group)))+
-  geom_line(lwd=1)+
-  geom_ribbon(aes(x=x,ymin=conf.low, ymax=conf.high),alpha=0.3, colour="black",linetype=0)+
-  scale_fill_manual(values=colours)+
-  scale_colour_manual(values=colours)+
-  scale_y_continuous(breaks = seq(0, 16, 2) ,limits=c(0,16), expand=c(0,0)) +
-  scale_x_continuous(breaks = seq(5,14,1), limits=c(5,14), expand=c(0,0)) +
-  coord_cartesian(clip = "off") +
-  labs(x = "River temperature \n (Yorkshire Ouse) (°C)")+
-  theme_JN()+
-  theme(axis.title.y = element_blank(),
-        legend.position = "none",
-        plot.margin = margin(5.5,10,5.5,5.5, "pt"))
-tempregress
-
-lvlregress <-ggplot(foss_lvl_mod, aes(x=x, y=predicted, color=as.factor(group),fill=as.factor(group)))+
-  geom_line(lwd=1)+
-  geom_ribbon(aes(x=x,ymin=conf.low, ymax=conf.high),alpha=0.3, colour="black",linetype=0)+
-  scale_fill_manual(values=colours)+
-  scale_colour_manual(values=colours)+
-  scale_y_continuous(breaks = seq(0, 16, 2) ,limits=c(0,16), expand=c(0,0)) +
-  scale_x_continuous(breaks = seq(5.2,7.2,0.4), limits=c(5.2,7.2), expand=c(0,0)) +
-  coord_cartesian(clip = "off") +
-  labs(x = "D/S river level \n (Yorkshire Ouse) (mAOD)",
-       y = expression (Fish~count~("individuals·2m" ^2~h^-1)))+
-  theme_JN()+
-  theme(legend.position = "none",
-        plot.margin = margin(5.5,10,5.5,5.5, "pt"))
-lvlregress
-
-##
-#combinedregress<- ggdraw() +
-#  draw_plot(lvlregress, x = 0, y = 0, width = 0.53, height = 1) +
-#  draw_plot(tempregress, x =0.53, y=0, width=0.47, height=1)+
-#  draw_plot_label(label = c("a)", "b)", "CI = 95%", "CI = 95%"), 
-#                  size = 10,
-#                  x = c(0.10, 0.58,0.35, 0.8), 
-#                  y = c(0.97, 0.97,0.97, 0.97))
-
-#can improve this by using cowplot which would allow for ratio between two plots
-
-combinedregress <-plot_grid(lvlregress, tempregress,
-                            ncol = 2, nrow = 1, rel_widths = c(0.43,0.4), align = "h") 
-combinedregress
-ggsave(filename="combinedregress.svg", plot=combinedregress, device = "svg",units="cm", width=14,height=7, dpi=600)
-
-######################################
-######################################
-
-
