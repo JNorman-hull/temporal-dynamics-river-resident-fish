@@ -511,13 +511,19 @@ theme_JN <- function(base_size=10){
       panel.border = element_rect(colour = "black", fill=NA),
       panel.grid.major = element_blank(),
       panel.grid.minor = element_blank(),
-      panel.background = element_blank()
+      panel.background = element_blank(),
+      strip.background = element_rect(colour = "black",fill = NA),
+      panel.spacing.x = unit(12, "pt")
     ) 
 }
 
 ################################
 #####Manuscript - Figure 2######
 ################################
+
+#There appears to be an error in line geom_rect(aes(xmin=dplyr::lag(time)+1,xmax=(time)+1, ymin=-Inf,ymax=Inf,fill=photo))
+#Background shading is not drawing correctly
+#Perhaps dplyr/tidyverse update has changed dplyr:lag 
 
 fosstotal <- ggplot(transform(foss, year = factor(year,labels = c("Year one", "Year two", "Year three"))),
                     aes(x = time, y = total)) +
@@ -605,7 +611,6 @@ stat.test2 <-stat.test2[-c(2,4,5,8,10,11,14,16,17),]
 #adjusting y position manually
 stat.test2["y.position"] <- c(22,24,22,22,24,22,22,24,22)
 
-
 box_photo<- ggboxplot(
   foss, x = "photo", y = "total",
   facet.by = "year", outlier.shape = NA,
@@ -633,10 +638,40 @@ finalbox
 ggsave(filename="finalbox.svg", plot=finalbox, device = "svg",units="cm", width=16,height=14, dpi=600)
 
 
+######Can also use standard ggplot approach, but initially had issues#######
+
+##problem with ggplot code when trying to add stat_pvalue_manual(stat.test1)
+##Create ggplot as own argument ggplot(foss, aes(x=lvl_stage, y=total)) then add 
+##geom_boxplot as a function and remap the fill to lightperiod
+##If the fill is defined as a global aesthetic, stat_pvalue will look for column 'light period' in the stat.test1 df too
+
+#box_lvl_stage <-  ggplot(foss, aes(x=lvl_stage, y=total))+
+#  geom_boxplot(position = position_dodge(1), outlier.shape=NA,width=0.6,mapping=aes(fill=lightperiod))+
+#  scale_y_continuous(breaks = seq(0, 20, 4),limits=c(0, 26)) +
+#  labs(x = "D/S river level (Yorkshire Ouse) (mAOD)")+
+#  coord_cartesian(clip="off")+
+#  theme_JN()+
+#  theme(axis.title.y = element_blank(),
+#        legend.position = c(.07, 0.6),
+#        legend.title = element_blank(),
+#        legend.key.height = unit(0.3,"cm"),
+#        legend.key.width = unit(0.4, "cm"),
+#        legend.text = element_text(size=8),
+#        legend.background = element_rect(colour = 'black', fill = 'white'),
+#        strip.background = element_blank(),
+#        strip.text = element_blank(),
+#        panel.spacing.x=unit(0, "lines")) +
+#  scale_fill_brewer(palette = "Greys")+
+#  facet_wrap(~year, scales = "free_x")+
+#  stat_pvalue_manual(stat.test1) +
+#  ggpubr::rotate_x_text()
+#box_lvl_stage
+
+#######################
+
 ################################
 #####Manuscript - Figure 4######
 ################################
-
 
 #Get predicted model fit line using ggpredict and store as dataframe
 plot(ggpredict(mod4_y1_zi, terms = c("lvl[5.2:7.2, by=0.01]")))
@@ -697,16 +732,6 @@ lvlregress <-ggplot(foss_lvl_mod, aes(x=x, y=predicted, color=as.factor(group),f
         plot.margin = margin(5.5,10,5.5,5.5, "pt"))
 lvlregress
 
-##
-#combinedregress<- ggdraw() +
-#  draw_plot(lvlregress, x = 0, y = 0, width = 0.53, height = 1) +
-#  draw_plot(tempregress, x =0.53, y=0, width=0.47, height=1)+
-#  draw_plot_label(label = c("a)", "b)", "CI = 95%", "CI = 95%"), 
-#                  size = 10,
-#                  x = c(0.10, 0.58,0.35, 0.8), 
-#                  y = c(0.97, 0.97,0.97, 0.97))
-
-
 combinedregress <-plot_grid(lvlregress, tempregress,
                             ncol = 2, nrow = 1, rel_widths = c(0.43,0.4), align = "h") 
 combinedregress
@@ -725,10 +750,6 @@ stat.pp <- foss %>%
   add_significance()
 stat.pp
 
-#Quick plot to get x/y values for table
-bxp <- ggplot(foss %>% filter(!is.na(p_event)), aes(x = p_event, fill = p_day, weight=p_total)) + 
-  geom_bar(position="dodge", colour="black")
-bxp
 #adding xy values
 stat.pp <- stat.pp %>% add_xy_position(x = "p_event")
 
@@ -744,18 +765,13 @@ barpp <- ggplot(foss %>% filter(!is.na(p_event)), aes(x = p_event)) +
   scale_y_continuous(breaks = seq(0, 200, 50), limits=c(0, 250), expand=c(0,0)) +
   labs(x = "Pumping operation", y = expression ("Total fish count"~("individuals·2m" ^-2)))+
   scale_color_grey() + 
-  theme_bw() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.text.x=element_text(colour="black", size = 10),       
-        legend.position = c(.3, 0.8),
+  theme_JN() + 
+  theme(legend.position = c(.3, 0.8),
         legend.title = element_blank(),
         legend.key.height = unit(0.4,"cm"),
         legend.key.width = unit(0.4, "cm"),
         legend.text = element_text(size=8),
-        legend.background = element_rect(colour = 'black', fill = 'white'),
-        panel.border = element_rect(colour = "black", fill=NA)) +
+        legend.background = element_rect(colour = 'black', fill = 'white')) +
   scale_fill_brewer(palette = "Greys") +
   labs(fill = "Day") +
   stat_pvalue_manual(stat.pp)
@@ -769,12 +785,7 @@ pp_lvl <-ggplot(foss,aes(x=p_date, y=p_lvl), inherit.aes = FALSE) +
                      label= c("02 Oct","06 Oct", "10 Oct","14 Oct", "18 Oct","22 Oct", "26 Oct","30 Oct"),
                      limits=c(1,744),expand=c(0,0)) +
   labs(x = "Date", y = "D/S river Level \n (Yorkshire Ouse) (mAOD)")+
-  theme_bw() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.x=element_text(colour="black", size = 10),
-        axis.text.y=element_text(colour="black", size = 10),
-        panel.border = element_rect(colour = "black", fill=NA)) +
+  theme_JN() +
   ggpubr::rotate_x_text()
 pp_lvl
 
@@ -784,12 +795,16 @@ pp_lvl
 pp_bind <-plot_grid(barpp, pp_lvl,
                     ncol = 2, nrow = 1, rel_widths = c(3.5, 6.5),align = "h")
 
+pp_bind
+
+ggsave(filename="pp_bind.svg", plot=pp_bind, device = "svg",units="cm", width=16,height=12, dpi=600)
+
+
 ################################
 #####Manuscript - Figure 6######
 ################################
 
-
-###summarise data, create ID for each row for continuous axis 
+#Complicated figure and I expect a much better solution is available, but this manual approach was satisfactory
 
 hist_sum <- foss %>% filter(barrier2=="Pre-dawn barrier closure")%>%
   group_by(b_time) %>% 
@@ -815,8 +830,6 @@ hist_sum3$x_ID<-1:nrow(hist_sum3)
 hist_sum_bind <- rbind(hist_sum, hist_sum2, hist_sum3)
 hist_sum_bind$barrier <- as.factor(hist_sum_bind$barrier)
 
-#######Create histogram
-
 histbox <- ggplot(hist_sum_bind%>%filter(barrier=="Pre-dawn barrier closure"), aes(x=x_ID, y = med)) +
   geom_bar(stat="identity", width=1, alpha=0.2) +
   scale_y_continuous(breaks=seq(0, 18, 2),
@@ -826,11 +839,8 @@ histbox <- ggplot(hist_sum_bind%>%filter(barrier=="Pre-dawn barrier closure"), a
                      label= c("07:00","08:00","09:00","10:00"),
                      limits=c(0,14),
                      expand=c(0,0)) +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.title.y=element_blank(),
+  theme_JN() +
+  theme(axis.title.y=element_blank(),
         strip.text.y = element_blank(),
         legend.position = "none")  +
   rremove("xlab") +
@@ -838,19 +848,13 @@ histbox <- ggplot(hist_sum_bind%>%filter(barrier=="Pre-dawn barrier closure"), a
   rremove("x.ticks") 
 histbox
 
-
-#####Create and extract only the boxplot, to overlay on histogram
-
 boxplotbarrier <- ggplot(foss%>%filter(barrier2=="Pre-dawn barrier closure"), aes( y = b_total2)) +
   stat_boxplot(geom = "errorbar", width=1, position = position_dodge(0.5))+
   geom_boxplot(outlier.shape=NA,width=3,coef = 0, fill='white') +
   scale_y_continuous(breaks = seq(0, 18, 2),limits=c(0, 18), expand=c(0,0)) +
-  theme_bw() + 
+  theme_JN() + 
   xlim(-6, 6)+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.title.y=element_blank(),
+  theme(axis.title.y=element_blank(),
         strip.text.y = element_blank())+
   rremove("x.axis")+
   rremove("xlab") +
@@ -880,10 +884,8 @@ barrierplot<- ggplot(foss%>%filter(barrier=="Pre-dawn barrier closure"), aes(x=b
                                 92,96,100,104,108,112,116,120,124,128,132,136,140,144),
                      limits=c(20,148),
                      expand=c(0,0)) +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.x=element_blank(),
+  theme_JN() +
+  theme(axis.text.x=element_blank(),
         axis.title.x=element_blank(),
         axis.title.y=element_blank(),
         axis.text.y=element_blank(),
@@ -907,11 +909,8 @@ barrierplot_hyd<- ggplot(foss%>%filter(barrier=="Pre-dawn barrier closure" | bar
                                 92,96,100,104,108,112,116,120,124,128,132,136,140,144,
                                 limits=c(20,148)),
                      expand=c(0,0))+
-  theme_half_open() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.title.y=element_blank(),
+  theme_JN()+
+  theme(axis.title.y=element_blank(),
         strip.text.y = element_blank(),
         legend.position = c(.65, 0.7),
         legend.title = element_blank(),
@@ -943,11 +942,8 @@ histbox2 <- ggplot(hist_sum_bind%>%filter(barrier=="Post barrier trial"), aes(x=
   scale_x_continuous(breaks = c(1, 5, 9, 13),
                      limits=c(0,14),
                      expand=c(0,0)) +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.text.x=element_blank(),
+  theme_JN() +
+  theme(axis.text.x=element_blank(),
         axis.title.y=element_blank(),
         axis.title.x=element_blank(),
         strip.text.y = element_blank(),
@@ -959,13 +955,9 @@ boxplotbarrier2 <- ggplot(foss%>%filter(barrier2=="Post barrier trial"), aes( y 
   stat_boxplot(geom = "errorbar", width=1, position = position_dodge(0.5))+
   geom_boxplot(outlier.shape=NA,width=3,coef = 0, fill='white') +
   scale_y_continuous(breaks = seq(0, 18, 2),limits=c(0, 18), expand=c(0,0)) +
-  theme_bw() + 
+  theme_JN() + 
   xlim(-6, 6)+
-  theme_half_open() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.title.y=element_blank(),
+  theme(axis.title.y=element_blank(),
         strip.text.y = element_blank())+
   rremove("x.axis")+
   rremove("xlab") +
@@ -990,10 +982,8 @@ barrierplot2<- ggplot(foss%>%filter(barrier=="Post barrier trial"), aes(x=b_time
                                 96,104,112,120,128,136,144),
                      limits=c(20,148),
                      expand=c(0,0)) +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.x=element_blank(),
+  theme_JN() +
+  theme(axis.text.x=element_blank(),
         axis.title.x=element_blank(),
         axis.title.y=element_blank(),
         axis.text.y=element_blank(),
@@ -1015,11 +1005,8 @@ barrierplot_hyd2<- ggplot(foss%>%filter(barrier=="Post barrier trial" | barrier=
                                 92,96,100,104,108,112,116,120,124,128,132,136,140,144,
                                 limits=c(20,148)),
                      expand=c(0,0))+
-  theme_half_open() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.title.y=element_blank(),
+  theme_JN()+
+  theme(axis.title.y=element_blank(),
         strip.text.y = element_blank(),
         legend.position = "none")+
   rremove("x.axis")+
@@ -1037,8 +1024,6 @@ middle_bind<- ggdraw() +
   draw_plot(middlebox2, x =0.3, y=0, width=0.7, height=1)
 middle_bind
 
-
-######### Bototm plot
 histbox3 <- ggplot(hist_sum_bind%>%filter(barrier=="Normal operation"), aes(x=x_ID, y = med)) +
   geom_bar(stat="identity", width=1, alpha=0.2) +
   scale_y_continuous(breaks=seq(0, 18, 2),
@@ -1048,11 +1033,8 @@ histbox3 <- ggplot(hist_sum_bind%>%filter(barrier=="Normal operation"), aes(x=x_
                      label= c("07:00","08:00","09:00","10:00"),
                      limits=c(0,14),
                      expand=c(0,0)) +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.text.x=element_text(colour="black", size = 10,  angle = 90,vjust = 0.5),
+  theme_JN() +
+  theme(axis.text.x=element_text(angle = 90,vjust = 0.5),
         axis.title.y=element_blank(),
         axis.title.x=element_blank(),
         strip.text.y = element_blank(),
@@ -1063,13 +1045,9 @@ boxplotbarrier3 <- ggplot(foss%>%filter(barrier2=="Normal operation"), aes( y = 
   stat_boxplot(geom = "errorbar", width=1, position = position_dodge(0.5))+
   geom_boxplot(outlier.shape=NA,width=3,coef = 0, fill='white') +
   scale_y_continuous(breaks = seq(0, 18, 2),limits=c(0, 18), expand=c(0,0)) +
-  theme_bw() + 
   xlim(-6, 6)+
-  theme_half_open() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.title.y=element_blank(),
+  theme_JN()+
+  theme(axis.title.y=element_blank(),
         strip.text.y = element_blank())+
   rremove("x.axis")+
   rremove("xlab") +
@@ -1099,10 +1077,8 @@ barrierplot3<- ggplot(foss%>%filter(barrier=="Normal operation"), aes(x=b_timeco
                               "07:00","15:00","23:00"),
                      limits=c(20,148),
                      expand=c(0,0)) +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.x=element_text(colour="black", size = 10, angle = 90,vjust = 0.5),
+  theme_JN()+
+  theme(axis.text.x=element_text(angle = 90,vjust = 0.5),
         axis.title.y=element_blank(),
         axis.title.x=element_blank(),
         axis.text.y=element_blank(),
@@ -1124,11 +1100,8 @@ barrierplot_hyd3<- ggplot(foss%>%filter(barrier=="Normal operation" | barrier=="
                                 92,96,100,104,108,112,116,120,124,128,132,136,140,144,
                                 limits=c(20,148)),
                      expand=c(0,0))+
-  theme_half_open() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.text.y=element_text(colour="black", size = 10),
-        axis.title.y=element_blank(),
+  theme_JN()+
+  theme(axis.title.y=element_blank(),
         strip.text.y = element_blank(),
         legend.position = "none")+
   rremove("x.axis")+
