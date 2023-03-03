@@ -1,12 +1,11 @@
 
-library(ggplot2)
+
 library(ggpubr)
 library(rstatix)
-library(dunn.test)
+
 library(cowplot)
-library(glmmTMB)
-library(ggeffects)
-library(DHARMa)
+
+
 
 
 library(ggsignif)
@@ -24,6 +23,14 @@ library(car)
 
 library(tidyverse)
 library(funModeling)
+library(ggplot2)
+library(dunn.test)
+
+
+library(glmmTMB)
+library(ggeffects)
+library(DHARMa)
+
 
 ###################################
 #### 1 - Load data and prepare ####
@@ -117,15 +124,18 @@ ggplot(foss, aes(as.factor(lvl_stage),total))+
 
 
 #######Post pump operation fish count data#######
-
 #total fish count by day (pre, post operation)
 foss  %>% filter(!is.na(p_day))%>% group_by(p_event,p_day) %>%  summarise(n = sum(p_total), med = median(p_total), min = min(p_total), max = max(p_total), IQR = IQR(p_total))
 ggplot(foss%>%filter(!is.na(p_day)), aes(p_day,p_total))+
   geom_bar(stat="identity")+
   geom_text(aes(label=after_stat(y)),stat = 'summary', fun = sum)+facet_wrap(~p_event)
 
-#######Floodgate operation fish count data#######
 
+#######Floodgate operation fish count data#######
+#total fish count by barrier operation (normal, pre-dawn, post-trial)
+foss  %>% filter(!is.na(barrier2))%>% group_by(barrier2) %>%  summarise(n = sum(b_total2), med = median(b_total2), min = min(b_total2), max = max(b_total2), IQR = IQR(b_total2))
+ggplot(foss%>%filter(!is.na(barrier2)), aes(barrier2,b_total2))+
+  geom_boxplot()
 
 #######Environmental data#######
 #River level within observed data range - descriptive values presented in Table S1 represent full duration of study
@@ -181,6 +191,14 @@ foss %>% filter(barrier2=="Normal operation"|barrier2=="Pre-dawn barrier closure
 #Post comp hydro
 foss %>%  filter(barrier2=="Normal operation"|barrier2=="Post barrier trial") %>%
   wilcox.test(data=.,b_total2~barrier2)
+
+#######################################
+#### 2.1 - Modelling - GAM and GLMM####
+#######################################
+
+
+
+
 
 
 ###########################################################
