@@ -1,9 +1,6 @@
 
 
 library(ggpubr)
-library(rstatix)
-
-library(cowplot)
 
 
 
@@ -16,20 +13,19 @@ library(gtable)
 library(gridExtra)
 library(lattice)
 
-library(lme4)
-library(mgcv)
-library(car)
-
-
 library(tidyverse)
 library(funModeling)
 library(ggplot2)
 library(dunn.test)
 
-
+library(mgcv)
+library(car)
+library(MASS)
 library(glmmTMB)
-library(ggeffects)
 library(DHARMa)
+library(rstatix)
+library(cowplot)
+library(ggeffects)
 
 
 ###################################
@@ -149,7 +145,7 @@ ggplot(foss%>%filter(year!="2017/18"), aes(month,temp))+
 
 
 ##################################
-#### 2 - Statistical analysis ####
+#### 3 - Statistical analysis ####
 ##################################
 
 ### Data is heavily skewed and non-normal, supported by shapiro.test
@@ -193,17 +189,344 @@ foss %>%  filter(barrier2=="Normal operation"|barrier2=="Post barrier trial") %>
   wilcox.test(data=.,b_total2~barrier2)
 
 #######################################
-#### 2.1 - Modelling - GAM and GLMM####
+#### 3.1 - Modelling - GAM and GLMM####
 #######################################
 
+####Generalised Additive Modelling####
+#Non-linear time effect
+
+###Construct GAMS to check for model fit before using geom_smooth
+###Geom_smooth uses same function as mgcv GAM, 
+###Therefore not concerned about plotting lines directly from model as no extra terms used
+
+gam_y <- gam(data=foss, total ~ s(time, by=month), method = "REML")
+gam.check(gam_y)
+summary(gam_y)
+
+gam_y1 <- gam(data=fossy1, total ~ s(time, by=month), method = "REML")
+gam.check(gam_y1)
+summary(gam_y1)
+
+gam_y2 <- gam(data=fossy2, total ~ s(time, by=month), method = "REML")
+gam.check(gam_y2)
+summary(gam_y2)
+
+gam_y3 <- gam(data=fossy3, total ~ s(time, by=month), method = "REML")
+gam.check(gam_y3)
+summary(gam_y3)
 
 
+####Generalised Linear Mixed Modelling####
+#Linear effects with environmental variables
+
+#Start with GLM before considering adding random factor
+
+#Data profiling
+
+str(foss)
+
+##4647 obs of 19 variables
+##each row of total is a separate fish count
+#year is a factor with three levels (2017/18, 2018/19, 2019/20)
+#month is a factor with six levels
+#light period is factor with two levels
+#photo is a factor with four levels
+#lvl_stage is a factor with four levels
+#lvl is a continuous co variate
+#temp is a continuous co variate
+
+#check for missing data
+
+colSums(is.na(foss))
+
+#Year one temperature data not available, all other years have no missing data
+
+#check balance of data across categorical variables
+table(foss$lvl_stage)
+#not well balanced on lvl_stage, however data are random
+table(foss$month)
+#not well balanced in November and January
+table(foss$photo)
+#biased towards night-time counts
+
+#check within years
+
+table(fossy1$lvl_stage) #no elevated
+table(fossy1$month)
+table(fossy1$photo)
+table(fossy2$lvl_stage) #no elevated
+table(fossy2$month) #well balanced
+table(fossy2$photo)
+table(fossy3$lvl_stage) #elevated
+table(fossy3$month)
+table(fossy3$photo)
+
+#Check % of zeros in response variable
+sum(foss$total == 0,
+    na.rm = TRUE) * 100 / nrow(foss)
+#20% of fish counts are 0, potential for zero-inflation
+#if amount of observed zeros is larger than number of predicted, 
+#then the model is under fitting zeros
+
+##check for multi-collinearity in continuous variables
+
+cor.test(foss$lvl, foss$temp, method="spearman", exact=FALSE)
+
+plot(foss$temp, foss$lvl)
+
+#Small degree of collinearity here, but is obscured by temporal information so unlikely to be relevant
+#higher river levels occur at all temps
+
+#check Variance Inflation Factor to determine collineartiy (VIF >3)
+
+vif(glm(total ~ lvl + temp + lvl_stage + lightperiod + month + year,
+        family = poisson,
+        data = foss))
+
+#confirms that temp shows collinearity with lvl but does not exceed 3, accepted
+
+###Explore plots to determine relationships of interest
+
+plot(foss$total, foss$lvl)# negative linear
+plot(fossy2$temp, fossy2$total) #negative linear
+
+plot(foss$total ~ foss$lvl_stage) #stable(reference) higher
+plot(foss$total~ foss$photo) #dawn and dusk higher
+plot(foss$total~ foss$year) # different variation between years
+plot(foss$total~ foss$month) # different variation between months
+
+### Now consider interactions 
+
+#fish count, temperature and photo period
+#fish count, temperature and month
+#fish count, temperature and year
+#fish count, lvl_stage and photo
+
+ggplot(foss, aes(x=temp, y=total)) + 
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE) +facet_grid(~photo)
+
+#strength of interaction between temperature and night is slightly weaker, 
+#possible interaction with light period and temperature
+
+ggplot(fossy2, aes(x=temp, y=total)) + 
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE) 
+
+ggplot(fossy2, aes(x=lvl, y=total)) + 
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE) 
+#evidence of interaction, but expected as seasonal temperature decline
+
+ggplot(foss, aes(x=temp, y=total)) + 
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE) +facet_grid(~year)
+#Stronger interaction in year two
 
 
+##determining independence of the dependable variable is difficult as no way of knowing if fish counted belong to one shoal, or many, or belong to one species, or many
+##Assume not independent
 
-###########################################################
-### Drawing figures
-###########################################################
+######Create independent models for each year#####
+
+#year 1
+
+Pois1 <- glm(total ~ lvl+ lvl_stage + month + photo,
+             data = fossy1,
+             family = poisson(link = log))
+summary (Pois1)
+
+#calculate psuedo R2 100 x (null deviance-residual deviance) / null deviance
+#31% of variation fish count explained by this model
+
+#year 2
+
+Pois2 <- glm(total ~ temp+ lvl + lvl_stage + month + photo,
+             data = fossy2,
+             family = poisson(link = log))
+summary (Pois2)
+
+#52% of variation fish count explained by this model
+
+#year 3
+
+Pois3 <- glm(total ~ temp+ lvl + lvl_stage + month + photo,
+             data = fossy3,
+             family = poisson(link = log))
+summary (Pois3)
+
+#47% of variation fish count explained by this model
+
+#check models for overdispersion
+
+Pois1$deviance / Pois1$df.residual
+Pois2$deviance / Pois2$df.residual
+Pois3$deviance / Pois3$df.residual
+
+###all years are overdispersed
+###what is the source of the problem? 
+#Wrong distribution
+#zero inflation 
+#Autocorrelation
+
+# try changing distribution to negative binomial to treat the overdispersion
+# First exploring with Y2 data as inclusive of temperature
+
+model1 <-glm.nb(total~temp+lvl+lvl_stage+photo,data=fossy2)
+summary(model1)
+
+model1$deviance / model1$df.residual
+
+#reduce dispersion to 1.2, but ignores the source of dependency associated with sample month, and potentially individual fish count observations (i.e. OLRE)
+#Therefore, need to switch to a model that incorporates random effects -> GLMM
+
+# Quick function to test for overdispersion as can not use pearson resid in GLMM
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model)
+  rp <- residuals(model,type="pearson")
+  Pearson.chisq <- sum(rp^2)
+  prat <- Pearson.chisq/rdf
+  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
+  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+}
+
+#Add individual row ID and incorporate as random effect (OLRE)
+
+foss$ID<-1:nrow(foss)
+fossy1$ID<-1:nrow(fossy1)
+fossy2$ID<-1:nrow(fossy2)
+fossy3$ID<-1:nrow(fossy3)
+model2 <-glmmTMB(total~temp+lvl+lvl_stage+photo+(1|ID),data=fossy2, family=poisson)
+summary(model1)
+overdisp_fun(model1)
+
+# Adding an OLRE introduces underdispersion 
+
+model3 <-glmmTMB(total~temp+lvl+lvl_stage+photo+(1|ID)+(1|month),data=fossy2, family=poisson)
+summary(model3)
+overdisp_fun(model3)
+
+#adding month does improve the dispersion factor, but still under dispersed
+#this suggests either zero inflation, or a negative bionomial distribution required 
+
+###Year one models
+#Check % of zeros in response variable
+sum(fossy1$total == 0,
+    na.rm = TRUE) * 100 / nrow(fossy1)
+#13% zero
+
+mod4_y1_nb <-glmmTMB(total~lvl+lvl_stage+photo+(1|month),data=fossy1)
+summary(mod4_y1_nb)
+overdisp_fun(mod4_y1_nb)
+
+fittedModely1 <- mod4_y1_nb
+simuout1 <- simulateResiduals(fittedModel = fittedModely1)
+plot(simuout1)
+
+testDispersion(simuout1)
+testZeroInflation(simuout1) #zero inflation!!!
+
+mod4_y1_zi <- glmmTMB(total~+lvl+lvl_stage+photo+(1|month), data=fossy1,ziformula=~1, family=nbinom2())
+summary(mod4_y1_zi)
+
+#Check goodness of fit via residual diagnostics (Zurr)
+
+fittedModely1_zi <- mod4_y1_zi
+simuout2 <- simulateResiduals(fittedModel = fittedModely1_zi)
+plot(simuout2)
+
+testDispersion(simuout2) # marginally underdispersed 0.97
+testZeroInflation(simuout2) # 0.98 zero inflation treated 
+
+
+######## mod4_y1_zi accepted as year one model ######
+
+
+###Year two models
+#Check % of zeros in response variable
+sum(fossy2$total == 0,
+    na.rm = TRUE) * 100 / nrow(fossy2)
+#25% zero
+
+
+mod4_y2_nb <-glmmTMB(total~temp+lvl+lvl_stage+photo+(1|month),data=fossy2)
+summary(mod4_y2_nb)
+
+fittedModely2 <- mod4_y2_nb
+simuout3 <- simulateResiduals(fittedModel = fittedModely2)
+plot(simuout3)
+
+testDispersion(simuout3) 
+testZeroInflation(simuout3) # zero inflation!
+
+mod4_y2_zi <- glmmTMB(total~temp+lvl+lvl_stage+photo, data=fossy2,ziformula=~1, family=nbinom2())
+summary(mod4_y2_zi)
+###Random effect of month may interact oddly with ggpredict, consider removing for plot
+
+fittedModely2_zi <- mod4_y2_zi
+simuout4 <- simulateResiduals(fittedModel = fittedModely2_zi)
+plot(simuout4)
+
+testDispersion(simuout4) 
+testZeroInflation(simuout4) # 1.2 some zero inflation present but much improved over previous model
+
+
+######## mod4_y2_zi accepted as year two model ######
+
+####Year three models
+#Check % of zeros in response variable
+sum(fossy3$total == 0,
+    na.rm = TRUE) * 100 / nrow(fossy3)
+#21% zero
+
+mod4_y3_nb <-glmmTMB(total~temp+lvl+lvl_stage+photo+(1|month),data=fossy3)
+summary(mod4_y3_nb)
+overdisp_fun(mod4_y3_nb)
+
+fittedModely3 <- mod4_y3_nb
+simuout5 <- simulateResiduals(fittedModel = fittedModely3)
+plot(simuout5)
+
+testDispersion(simuout5) 
+testZeroInflation(simuout5) # Zero inflation!
+
+mod4_y3_zi <- glmmTMB(total~temp+lvl+lvl_stage+photo+(1|month), data=fossy3,ziformula=~1, family=nbinom2())
+summary(mod4_y3_zi)
+
+
+fittedModely3_zi <- mod4_y3_zi
+simuout6 <- simulateResiduals(fittedModel = fittedModely3_zi)
+plot(simuout6)
+
+testDispersion(simuout6) # 0.89
+testZeroInflation(simuout6) # 0.97 zero inflation treated 
+
+######## mod4_y3_zi accepted as year three model ######
+
+##################################################
+#### 4 - Visualization and publication figures####
+##################################################
+
+
+#create colour vector
+
+colours <- c("steelblue4", "red4", "palegreen4")
+
+#Create theme
+
+theme_JN <- function(base_size=10){ 
+  theme_grey() %+replace%
+    theme(
+      axis.text = element_text(colour="black"),
+      axis.title = element_text(colour="black"),
+      axis.ticks = element_line(colour="black"),
+      panel.border = element_rect(colour = "black", fill=NA),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.background = element_blank()
+    ) 
+}
+
 
 ##############################################
 #############################################
@@ -812,27 +1135,7 @@ ggsave(filename="finalbarrier.svg", plot=finalbarrier, device = "svg",units="cm"
 
 ###############################
 
-###############################################
-#####Construct GAMS to check for model fit before using geom_smooth
-#####Geom_smooth uses same function as mgcv GAM, 
-#####therefore not worried about plotting lines directly from model as I don't use any extra terms
-###############################################
 
-gam_y <- gam(data=foss, total ~ s(time, by=month), method = "REML")
-gam.check(gam_y)
-summary(gam_y)
-
-gam_y1 <- gam(data=fossy1, total ~ s(time, by=month), method = "REML")
-gam.check(gam_y1)
-summary(gam_y1)
-
-gam_y2 <- gam(data=fossy2, total ~ s(time, by=month), method = "REML")
-gam.check(gam_y2)
-summary(gam_y2)
-
-gam_y3 <- gam(data=fossy3, total ~ s(time, by=month), method = "REML")
-gam.check(gam_y3)
-summary(gam_y3)
 
 
 fosstotal <- ggplot(transform(foss, year = factor(year,labels = c("Year one", "Year two", "Year three"))),
@@ -862,421 +1165,7 @@ fosstotal
 ggsave(filename="fosstotal.svg", plot=fosstotal, device = "svg",units="cm", width=14,height=20, dpi=600)
 
 
-#####################
-########### Produce GLMM statistics 
-#####################
 
-
-str(foss)
-
-##4647 obs of 19 variables
-##each row of total is a separate fish count
-#year is a factor with three levels (2017/18, 2018/19, 2019/20)
-#month is a factor with six levels
-#light period is factor with two levels
-#photo is a factor with four levels
-#lvl_stage is a factor with four levels
-#lvl is a continuous co variate
-#temp is a continuous co variate
-
-#check for missing data
-
-colSums(is.na(foss))
-
-#check balance of data across categorical variables
-table(foss$lvl_stage)
-#not well balanced on lvl_stage, however data are random
-table(foss$month)
-#not well balanced in November and January
-table(foss$photo)
-#again, lots more night time counts
-
-#check within years
-
-table(fossy1$lvl_stage) #no elevated
-table(fossy1$month)
-table(fossy1$photo)
-table(fossy2$lvl_stage) #no elevated
-table(fossy2$month) #well balanced
-table(fossy2$photo)
-table(fossy3$lvl_stage) #elevated
-table(fossy3$month)
-table(fossy3$photo)
-
-#Check % of zeros in response variable
-sum(foss$total == 0,
-    na.rm = TRUE) * 100 / nrow(foss)
-#20% of fish counts are 0, potential for zero-inflation
-#if amount of observed zeros is larger than number of predicted, 
-#then the model is under fitting zeros
-
-##check for multi-collinearity in continuous variables
-
-cor.test(foss$lvl, foss$temp, method="spearman")
-
-plot(foss$temp, foss$lvl)
-
-#Small degree of collinearity here, but is obscured by temporal information so unlikely to be relevant
-#higher river levels occur are all temps
-
-#check Variance Inflation Factor to determine collineartiy (VIF >3)
-
-vif(glm(total ~ lvl + temp + lvl_stage + lightperiod + month + year,
-        family = poisson,
-        data = foss))
-
-#confirms that temp shows collinearity with lvl but does not exceed 3, accepted
-
-###Explore plots to determine relationships of interest
-
-plot(foss$total, foss$lvl)# negative linear
-plot(fossy2$temp, fossy2$total) #negative linear
-
-plot(foss$total ~ foss$lvl_stage) #stable(reference) higher
-plot(foss$total~ foss$photo) #dawn and dusk higher
-plot(foss$total~ foss$year) # different variation between years
-plot(foss$total~ foss$month) # different variation between months
-
-### Now consider interactions 
-
-#fish count, temperature and photo period
-#fish count, temperature and month
-#fish count, temperature and year
-#fish count, lvl_stage and photo
-
-ggplot(foss, aes(x=temp, y=total)) + 
-  geom_point()+
-  geom_smooth(method=lm, se=FALSE) +facet_grid(~photo)
-
-#strength of interaction between temperature and night is slightly weaker, 
-#possible interaction with light period and temperature
-
-ggplot(fossy2, aes(x=temp, y=total)) + 
-  geom_point()+
-  geom_smooth(method=lm, se=FALSE) 
-
-ggplot(fossy2, aes(x=lvl, y=total)) + 
-  geom_point()+
-  geom_smooth(method=lm, se=FALSE) 
-#evidence of interaction, but expected as seasonal temperature decline
-
-ggplot(foss, aes(x=temp, y=total)) + 
-  geom_point()+
-  geom_smooth(method=lm, se=FALSE) +facet_grid(~year)
-#Stronger interaction in year two
-
-ggplot(foss, aes(x=lvl_stage, y=total)) + 
-  geom_point()+
-  geom_smooth(method=lm, se=FALSE) +facet_grid(~lightperiod)
-
-
-## determining independence of the dependable variable is difficult as no way of knowing
-## if fish counted belong to one shoal, or many, or belong to one species, or many
-
-#year 1
-
-Pois1 <- glm(total ~ lvl+ lvl_stage + month + photo,
-             data = fossy1,
-             family = poisson(link = log))
-summary (Pois1)
-
-#calculate psuedo R2 100 x (null deviance-residual deviance) / null deviance
-#31% of variation fish count explained by this model
-
-#year 2
-
-Pois2 <- glm(total ~ temp+ lvl + lvl_stage + month + photo,
-             data = fossy2,
-             family = poisson(link = log))
-summary (Pois2)
-
-#52% of variation fish count explained by this model
-
-#year 3
-
-Pois3 <- glm(total ~ temp+ lvl + lvl_stage + month + photo,
-             data = fossy3,
-             family = poisson(link = log))
-summary (Pois3)
-
-#47% of variation fish count explained by this model
-
-#check models for overdispersion
-
-Pois1$deviance / Pois1$df.residual
-Pois2$deviance / Pois2$df.residual
-Pois3$deviance / Pois3$df.residual
-
-###all years are overdispersed
-###what is the source of the problem
-#Wrong distribution
-#zero inflation 
-#Autocorrelation
-
-# try changing distribution to negative binomial to treat the overdispersion
-# First exploring with Y2 data as inclusive of temperature
-
-model1 <-glm.nb(total~temp+lvl+lvl_stage+photo,data=fossy2)
-summary(model1)
-
-model1$deviance / model1$df.residual
-
-# reduce dispersion to 1.2, but ignores the source of dependency associated with sample month and individual observation ID
-# Need to switch to a model that incorporates random effects -> GLMM
-
-# Quick function to test for overdispersion as can not use pearson resid in GLMM
-overdisp_fun <- function(model) {
-  rdf <- df.residual(model)
-  rp <- residuals(model,type="pearson")
-  Pearson.chisq <- sum(rp^2)
-  prat <- Pearson.chisq/rdf
-  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
-  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
-}
-
-#try adding an OLRE to account for overdispersion
-
-foss$ID<-1:nrow(foss)
-
-model2 <-glmer(total~temp+lvl+lvl_stage+photo+(1|ID),data=fossy2, family=poisson, control = glmerControl(optimizer = "bobyqa"))
-summary(model1)
-overdisp_fun(model1)
-
-# Adding an OLRE introduces underdispersion 
-
-model3 <-glmer(total~temp+lvl+lvl_stage+photo+(1|ID)+(1|month),data=fossy2, family=poisson, control = glmerControl(optimizer = "bobyqa"))
-summary(model3)
-overdisp_fun(model3)
-
-# adding month does improve the dispersion factor, but still under dispersed
-# this suggests either zero inflation, or a negative bionomial distribution required 
-
-# Constructing models for each year to check AIC fit
-
-
-###Year one models
-#Check % of zeros in response variable
-sum(fossy1$total == 0,
-    na.rm = TRUE) * 100 / nrow(fossy1)
-#13% zero
-
-mod1_y1_p <-glmer(total~lvl+lvl_stage+photo+(1|month),data=fossy1, family=poisson, control = glmerControl(optimizer = "bobyqa"))
-summary(mod1_y1_p)
-overdisp_fun(mod1_y1_p)
-
-mod2_y1_p <-glmer(total~lvl+lvl_stage+photo+(1|ID)+(1|month),data=fossy1, family=poisson, control = glmerControl(optimizer = "bobyqa"))
-summary(mod2_y1_p)
-overdisp_fun(mod2_y1_p)
-
-mod3_y1_nb <-glmer.nb(total~lvl+lvl_stage+photo+(1|ID)+(1|month),data=fossy1,control = glmerControl(optimizer = "bobyqa"))
-summary(mod3_y1_nb)
-overdisp_fun(mod3_y1_nb)
-
-mod4_y1_nb <-glmer.nb(total~lvl+lvl_stage+photo+(1|month),data=fossy1,control = glmerControl(optimizer = "bobyqa"))
-summary(mod4_y1_nb)
-overdisp_fun(mod4_y1_nb)
-
-fittedModely1 <- mod4_y1_nb
-simuout1 <- simulateResiduals(fittedModel = fittedModely1)
-plot(simuout1)
-
-testDispersion(simuout1) # marginally under dispersed 0.95
-testZeroInflation(simuout1) # some evidence of zero inflation, over-plotting nighttime zeros
-library(glmmTMB)
-mod4_y1_zi <- glmmTMB(total~+lvl+lvl_stage+photo+(1|month), data=fossy1,ziformula=~1, family=nbinom2())
-summary(mod4_y1_zi)
-
-fittedModely1_zi <- mod4_y1_zi
-simuout2 <- simulateResiduals(fittedModel = fittedModely1_zi)
-plot(simuout2)
-
-testDispersion(simuout2) # marginally underdispersed 0.97
-testZeroInflation(simuout2) # 0.98 zero inflation treated 
-
-
-###Year two models
-#Check % of zeros in response variable
-sum(fossy2$total == 0,
-    na.rm = TRUE) * 100 / nrow(fossy2)
-#25% zero
-
-
-mod1_y2_p <-glmer(total~temp+lvl+lvl_stage+photo+(1|month),data=fossy2, family=poisson, control = glmerControl(optimizer = "bobyqa"))
-summary(mod1_y2_p)
-overdisp_fun(mod1_y2_p)
-
-mod2_y2_p <-glmer(total~temp+lvl+lvl_stage+photo+(1|ID)+(1|month),data=fossy2, family=poisson, control = glmerControl(optimizer = "bobyqa"))
-summary(mod2_y2_p)
-overdisp_fun(mod2_y2_p)
-
-mod3_y2_nb <-glmer.nb(total~temp+lvl+lvl_stage+photo+(1|ID)+(1|month),data=fossy2,control = glmerControl(optimizer = "bobyqa"))
-summary(mod3_y2_nb)
-overdisp_fun(mod3_y2_nb)
-
-mod4_y2_nb <-glmer.nb(total~temp+lvl+lvl_stage+photo+(1|month),data=fossy2,control = glmerControl(optimizer = "bobyqa"))
-summary(mod4_y2_nb)
-
-fittedModely2 <- mod4_y2_nb
-simuout3 <- simulateResiduals(fittedModel = fittedModely2)
-plot(simuout3)
-
-testDispersion(simuout3) 
-testZeroInflation(simuout3) # some evidence of zero inflation, overplotting nighttime
-
-mod4_y2_zi <- glmmTMB(total~temp+lvl+lvl_stage+photo, data=fossy2,ziformula=~1, family=nbinom2())
-summary(mod4_y2_zi)
-###Random effect of month may interact oddly with ggpredict, consider removing for plot
-
-fittedModely2_zi <- mod4_y2_zi
-simuout4 <- simulateResiduals(fittedModel = fittedModely2_zi)
-plot(simuout4)
-
-testDispersion(simuout4) 
-testZeroInflation(simuout4) # 0.98 zero inflation treated 
-
-####Year 3 models
-#Check % of zeros in response variable
-sum(fossy3$total == 0,
-    na.rm = TRUE) * 100 / nrow(fossy3)
-#21% zero
-
-mod1_y3_p <-glmer(total~temp+lvl+lvl_stage+photo+(1|month),data=fossy3, family=poisson, control = glmerControl(optimizer = "bobyqa"))
-summary(mod1_y3_p)
-overdisp_fun(mod1_y3_p)
-
-mod2_y3_p <-glmer(total~temp+lvl+lvl_stage+photo+(1|ID)+(1|month),data=fossy3, family=poisson, control = glmerControl(optimizer = "bobyqa"))
-summary(mod2_y3_p)
-overdisp_fun(mod2_y3_p)
-
-mod3_y3_nb <-glmer.nb(total~temp+lvl+lvl_stage+photo+(1|ID)+(1|month),data=fossy3,control = glmerControl(optimizer = "bobyqa"))
-summary(mod3_y3_nb)
-overdisp_fun(mod3_y3_nb)
-
-mod4_y3_nb <-glmer.nb(total~temp+lvl+lvl_stage+photo+(1|month),data=fossy3,control = glmerControl(optimizer = "bobyqa"))
-summary(mod4_y3_nb)
-overdisp_fun(mod4_y3_nb)
-
-fittedModely3 <- mod4_y3_nb
-simuout5 <- simulateResiduals(fittedModel = fittedModely3)
-plot(simuout5)
-
-testDispersion(simuout5) 
-testZeroInflation(simuout5) # no zero inflation
-
-mod4_y3_zi <- glmmTMB(total~temp+lvl+lvl_stage+photo+(1|month), data=fossy3,ziformula=~1, family=nbinom2())
-summary(mod4_y3_zi)
-
-
-fittedModely3_zi <- mod4_y3_zi
-simuout6 <- simulateResiduals(fittedModel = fittedModely3_zi)
-plot(simuout6)
-
-testDispersion(simuout6) # 0.89
-testZeroInflation(simuout6) # 0.97 zero inflation treated 
-
-#### LRT testing to determine best model via AIC/LRT
-
-lrtest(mod1_y1_p, mod4_y1_nb)
-lrtest(mod4_y1_nb, mod4_y1_zi)
-
-lrtest(mod1_y2_p, mod4_y2_nb)
-lrtest(mod4_y2_nb, mod4_y2_zi)
-
-lrtest(mod1_y3_p, mod4_y3_nb)
-lrtest(mod4_y3_nb, mod4_y3_zi)
-
-
-##########
-###Testing the final fit of the models
-###########
-##########need to rvisit this
-
-zero_count(mod4_y2_zi)
-
-fittedModel <- mod4_y2_zi
-simuout <- simulateResiduals(fittedModel = fittedModel)
-plot(simuout)
-
-testZeroInflation(simuout) #not zero inflated, 1.1
-overdisp_fun(mod4_y2_zi)
-
-plotResiduals(mod4_y2_zi, fossy2$month, xlab = "lvl_stage", main=NULL)
-plotResiduals(mod4_y2_zi, fossy2$photo, xlab = "lvl_stage", main=NULL)
-
-#deviations from uniformity caused by levels of month
-
-Fitted <- fitted(mod4_y2_zi)
-Resid <- resid(mod4_y2_zi, type = "pearson")
-par(mfrow = c(1,1), mar = c(5,5,2,2))
-plot(x = Fitted, y = Resid,
-     xlab = "Fitted values",
-     ylab = "Pearson Residuals")
-abline(h = 0, lty = 2)
-
-# not equal variances as many zeros predicted for night time counts
-# Consider transforming the data but because of clumpiness present we did not expect to achieve true 
-# Homogeneity of variance 
-# Accepted in Generalized model
-
-plot(x = fossy2$temp,
-     y = Resid,
-     xlab = "temperature",
-     ylab = "Pearson residuals",
-     pch = 16, cex = 1.5)
-abline(h = 0, lty = 2)
-
-## Residuals look odd towards higher temperatures, so this area of the model is weak
-## Relationship with lower temperatures consistent
-## model captures expected variation in residuals caused by stochastic features of enrivonrmental variables collected
-
-plot(x = fossy2$lvl_stage,
-     y = Resid,
-     xlab = "river level",
-     ylab = "Pearson residuals",
-     pch = 16, cex = 1.5)
-abline(h = 0, lty = 2)
-
-# River level performs better
-
-par(mfrow = c(1, 1))
-plot(cooks.distance(mod4_y2_zi),
-     xlab = "Observation",
-     ylab = "Cook's distance",
-     type = "h",
-     ylim = c(0, 1.1),
-     cex.lab = 1.5)
-abline(h = 1, lty = 2)
-
-# cook's distance shows few influential observations on the model 
-
-#checking for appropriate level of zeros
-####need to work on this
-
-#Check % of zeros in response variable
-sum(fossy2$total == 0,
-    na.rm = TRUE) * 100 / nrow(fossy2)
-
-Nfoss <- nrow(fossy2)
-Fitted<- fitted(mod4_y2_zi)
-Ysim <- matrix(nrow = Nfoss, ncol = 10000)
-Zeros <- vector(length = 10000)
-for(i in 1:10000)
-{
-  Ysim[,i] <- rpois(Nfoss, lambda = Fitted)
-  Zeros[i] <- sum(Ysim[,i] == 0) / Nfoss}
-
-par(mar = c(5,5,2,2), cex.lab = 1.5, mfrow = c(1,1))
-plot(table(Zeros),
-     axes = FALSE,
-     xlab = "Percentage of zeros",
-     ylab = "Frequency",
-     xlim = c(0.2, 0.6),
-     ylim = c(0, 1000))+
-  axis(2)+
-  axis(1, at = c(0.2, 0.3, 0.4, 0.5, 0.6),
-       labels = c("20%", "30%", "40%", "50%", "60%"))
-points(x = sum(fossy2$total == 0) / Nfoss, y = 30,
-       pch = 18, cex = 5, col = 1)
 
 
 #############################################
@@ -1313,25 +1202,6 @@ modpredy3["group"] <- 3
 foss_temp_mod <- bind_rows(modpredy2, modpredy3)
 
 foss_temp_mod<- foss_temp_mod %>% add_row(group = 1)
-
-#create colour vector
-
-colours <- c("steelblue4", "red4", "palegreen4")
-
-#Create theme
-
-theme_JN <- function(base_size=10){ 
-  theme_grey() %+replace%
-    theme(
-      axis.text = element_text(colour="black"),
-      axis.title = element_text(colour="black"),
-      axis.ticks = element_line(colour="black"),
-      panel.border = element_rect(colour = "black", fill=NA),
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank(),
-      panel.background = element_blank()
-    ) 
-}
 
 ##################################################
 tempregress <-ggplot(foss_temp_mod, aes(x=x, y=predicted, color=as.factor(group),fill=as.factor(group)))+
